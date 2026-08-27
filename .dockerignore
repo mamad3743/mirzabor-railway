@@ -1,0 +1,8 @@
+.git
+.gitignore
+vendor/
+error_log
+install.sh
+README.md
+*.md
+.env
