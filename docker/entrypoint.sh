@@ -61,21 +61,30 @@ PHP
 chown www-data:www-data "${APP_DIR}/config.php"
 
 # ---------------------------------------------------------------------------
-# Wait for the MySQL database to accept connections (Railway MySQL plugin
-# can take a few seconds to come up on first deploy).
+# Wait for the MySQL database to accept connections. A brand-new MySQL
+# service with a fresh volume can take up to a minute to finish its first
+# initialization on Railway, so retry generously and log each failed
+# connection attempt (mysqli's own warning) instead of hiding it.
 # ---------------------------------------------------------------------------
 if [ -n "$DB_PASS" ] || [ "$DB_HOST" != "localhost" ]; then
     echo "==> Waiting for MySQL at ${DB_HOST}:${DB_PORT}"
-    for i in $(seq 1 30); do
-        if php -r "new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}', ${DB_PORT});" 2>/dev/null; then
-            echo "==> Database is reachable"
+    DB_READY=0
+    for i in $(seq 1 60); do
+        if php -r "mysqli_report(MYSQLI_REPORT_OFF); \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}', ${DB_PORT}); if (\$c->connect_errno) { exit(1); }" 2>/dev/null; then
+            echo "==> Database is reachable (after ${i} attempt(s))"
+            DB_READY=1
             break
         fi
-        sleep 2
+        sleep 3
     done
 
+    if [ "$DB_READY" != "1" ]; then
+        echo "!! Could not reach MySQL at ${DB_HOST}:${DB_PORT} after 3 minutes."
+        echo "!! Check that the mysql service is Online in Railway and that MYSQLHOST/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE are set correctly on this service."
+    fi
+
     echo "==> Initializing / updating database tables"
-    (cd "${APP_DIR}" && php table.php) || echo "!! table.php failed, check DB credentials"
+    (cd "${APP_DIR}" && php table.php) || echo "!! table.php failed — see the PHP error above for the real reason (bad credentials, unreachable host, or a missing file)."
 fi
 
 # ---------------------------------------------------------------------------
@@ -115,6 +124,21 @@ CRON
 chmod 0644 /etc/cron.d/mirzabot-cron
 crontab /etc/cron.d/mirzabot-cron
 service cron start
+
+# ---------------------------------------------------------------------------
+# Fixing the MPM conflict at build time isn't enough: Railway's runtime layer
+# is known to silently re-enable mpm_event on top of php-apache images right
+# before the container starts, even when the image itself only ships
+# mpm_prefork (this is a documented Railway platform issue, not something
+# our Dockerfile controls). So re-apply the fix here, every single boot,
+# immediately before Apache actually starts.
+# ---------------------------------------------------------------------------
+echo "==> Enforcing single Apache MPM (mpm_prefork) before startup"
+a2dismod mpm_event mpm_worker >/dev/null 2>&1 || true
+rm -f /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_event.conf \
+      /etc/apache2/mods-enabled/mpm_worker.load /etc/apache2/mods-enabled/mpm_worker.conf
+a2enmod mpm_prefork >/dev/null 2>&1 || true
+apache2ctl configtest
 
 echo "==> Starting Apache"
 exec "$@"
