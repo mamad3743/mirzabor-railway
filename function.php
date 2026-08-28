@@ -1519,20 +1519,20 @@ function addBackgroundImage($urlimage, $qrCodeResult, $backgroundPath)
 
 function checktelegramip()
 {
-    // Railway (and most PaaS providers) terminate TLS on a reverse proxy, so the
-    // real client IP arrives via X-Forwarded-For instead of REMOTE_ADDR.
-    $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
-    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        $forwardedList = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-        $forwardedIp = trim($forwardedList[0]);
-        if (filter_var($forwardedIp, FILTER_VALIDATE_IP)) {
-            $clientIp = $forwardedIp;
-        }
+    // Railway sits behind multiple proxy hops, so Telegram's real source IP
+    // never reliably reaches the app (X-Forwarded-For ends up full of
+    // Railway's own internal edge IPs, not Telegram's). IP allowlisting is
+    // therefore not usable here. Instead, verify the secret token Telegram
+    // echoes back in every webhook request — this is Telegram's own
+    // recommended replacement for IP checking and works regardless of
+    // how many proxies sit in front of the container.
+    global $webhookSecret;
+    $secretHeader = $_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] ?? '';
+    if (!empty($webhookSecret) && is_string($secretHeader) && hash_equals($webhookSecret, $secretHeader)) {
+        return true;
     }
-    if (!is_string($clientIp) || $clientIp === '') {
-        return false;
-    }
-
+    return false;
+}
     $clientIp = trim($clientIp);
     if (!filter_var($clientIp, FILTER_VALIDATE_IP)) {
         return false;
