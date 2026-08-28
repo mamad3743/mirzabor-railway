@@ -25,6 +25,15 @@ BOT_USERNAME="${BOT_USERNAME:-${USERNAME_BOT:-}}"
 # Public domain the bot is served on (no scheme, no trailing slash).
 DOMAIN="${DOMAIN:-${RAILWAY_PUBLIC_DOMAIN:-}}"
 
+# A secret Telegram sends back in every webhook request's
+# X-Telegram-Bot-Api-Secret-Token header. Railway sits behind multiple proxy
+# hops, so Telegram's real source IP never reliably reaches the app — this
+# secret-token check (Telegram's own recommended alternative to IP
+# allowlisting) replaces IP-based verification and works regardless of how
+# many proxies are in front of the container. Derived deterministically from
+# the bot token so it's identical across restarts without needing storage.
+WEBHOOK_SECRET="$(printf '%s' "${BOT_TOKEN}mirzabot-webhook-secret" | sha256sum | cut -d' ' -f1)"
+
 if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_ID" ] || [ -z "$DOMAIN" ]; then
     echo "!! WARNING: BOT_TOKEN, ADMIN_ID and DOMAIN environment variables must be set."
     echo "   The app will start, but the bot will not work until these are configured."
@@ -56,6 +65,7 @@ try {
 \$adminnumber = '${ADMIN_ID}';
 \$domainhosts = '${DOMAIN}';
 \$usernamebot = '${BOT_USERNAME}';
+\$webhookSecret = '${WEBHOOK_SECRET}';
 ?>
 PHP
 chown www-data:www-data "${APP_DIR}/config.php"
@@ -93,6 +103,7 @@ fi
 if [ -n "$BOT_TOKEN" ] && [ -n "$DOMAIN" ]; then
     echo "==> Setting Telegram webhook to https://${DOMAIN}/index.php"
     curl -s -F "url=https://${DOMAIN}/index.php" \
+        -F "secret_token=${WEBHOOK_SECRET}" \
         "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" || true
     echo
 fi
