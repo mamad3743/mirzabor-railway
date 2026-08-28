@@ -22,8 +22,10 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # fail the BUILD (not just the deploy) if any conflict remains — that way
 # a broken MPM setup shows up clearly in Build Logs instead of crash-looping
 # the running container.
-RUN rm -f /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_event.conf \
-          /etc/apache2/mods-enabled/mpm_worker.load /etc/apache2/mods-enabled/mpm_worker.conf \
+RUN a2dismod mpm_event mpm_worker mpm_prefork 2>/dev/null || true \
+    && rm -f /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_event.conf \
+              /etc/apache2/mods-enabled/mpm_worker.load /etc/apache2/mods-enabled/mpm_worker.conf \
+              /etc/apache2/mods-enabled/mpm_prefork.load /etc/apache2/mods-enabled/mpm_prefork.conf \
     && a2enmod mpm_prefork rewrite headers \
     && apache2ctl configtest
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
