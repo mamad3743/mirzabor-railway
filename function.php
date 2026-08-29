@@ -1533,25 +1533,6 @@ function checktelegramip()
     }
     return false;
 }
-    $clientIp = trim($clientIp);
-    if (!filter_var($clientIp, FILTER_VALIDATE_IP)) {
-        return false;
-    }
-
-    $telegramIpRanges = [
-        ['lower' => '149.154.160.0', 'upper' => '149.154.175.255'],
-        ['lower' => '91.108.4.0', 'upper' => '91.108.7.255'],
-        ['lower' => '2001:67c:4e8::', 'upper' => '2001:67c:4e8:ffff:ffff:ffff:ffff:ffff']
-    ];
-
-    foreach ($telegramIpRanges as $range) {
-        if (isClientIpInRange($clientIp, $range['lower'], $range['upper'])) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 function isClientIpInRange($clientIp, $lowerBound, $upperBound)
 {
